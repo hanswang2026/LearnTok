@@ -1,5 +1,6 @@
 // @azure/openai v2.0.0 is a types-only companion; AzureOpenAI lives in the "openai" package
 import { AzureOpenAI } from "openai";
+import { DefaultAzureCredential, getBearerTokenProvider } from "@azure/identity";
 
 // Re-export shared types locally to avoid workspace-link issues
 export interface SkeletonNode {
@@ -21,13 +22,16 @@ export interface GeneratedSip {
 
 function getClient(): AzureOpenAI {
   const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
-  const apiKey = process.env.AZURE_OPENAI_API_KEY;
-  if (!endpoint || !apiKey) {
-    throw new Error(
-      "Missing Azure OpenAI configuration. Set AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_KEY."
-    );
+  if (!endpoint) {
+    throw new Error("Missing AZURE_OPENAI_ENDPOINT environment variable.");
   }
-  return new AzureOpenAI({ endpoint, apiKey, apiVersion: "2024-10-21" });
+
+  const credential = new DefaultAzureCredential();
+  const azureADTokenProvider = getBearerTokenProvider(
+    credential,
+    "https://cognitiveservices.azure.com/.default"
+  );
+  return new AzureOpenAI({ endpoint, azureADTokenProvider, apiVersion: "2024-10-21" });
 }
 
 function getDeployment(): string {

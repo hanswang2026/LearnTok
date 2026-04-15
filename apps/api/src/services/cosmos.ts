@@ -1,4 +1,8 @@
 import { CosmosClient, Container, Database, SqlParameter } from "@azure/cosmos";
+import https from "node:https";
+
+// Disable TLS verification for Cosmos DB Emulator (self-signed cert)
+const emulatorAgent = new https.Agent({ rejectUnauthorized: false });
 
 // Re-define types locally to avoid workspace linking issues
 interface SkeletonNode {
@@ -55,19 +59,32 @@ interface User {
   createdAt: string;
 }
 
-// --- Cosmos client setup ---
+// --- Cosmos client setup (lazy — env vars read at call time, after dotenv loads) ---
 
-const endpoint = process.env.COSMOS_ENDPOINT;
-const key = process.env.COSMOS_KEY;
-const databaseId = process.env.COSMOS_DATABASE || "learntok";
+let _client: CosmosClient | null = null;
 
-if (!endpoint || !key) {
-  console.warn(
-    "COSMOS_ENDPOINT or COSMOS_KEY not set – Cosmos DB calls will fail at runtime."
-  );
+function getClient(): CosmosClient {
+  if (!_client) {
+    const endpoint = process.env.COSMOS_ENDPOINT;
+    const key = process.env.COSMOS_KEY;
+    if (!endpoint || !key) {
+      throw new Error(
+        "COSMOS_ENDPOINT or COSMOS_KEY not set. Check your .env file."
+      );
+    }
+    const isEmulator = endpoint.includes("localhost") || endpoint.includes("127.0.0.1");
+    _client = new CosmosClient({
+      endpoint,
+      key,
+      ...(isEmulator && { agent: emulatorAgent }),
+    });
+  }
+  return _client;
 }
 
-const client = new CosmosClient({ endpoint: endpoint ?? "", key: key ?? "" });
+function getDatabaseId(): string {
+  return process.env.COSMOS_DATABASE || "learntok";
+}
 
 let database: Database;
 let sessionsContainer: Container;
@@ -78,6 +95,9 @@ let usersContainer: Container;
 
 export async function initDatabase(): Promise<void> {
   try {
+    const client = getClient();
+    const databaseId = getDatabaseId();
+
     const { database: db } = await client.databases.createIfNotExists({
       id: databaseId,
     });

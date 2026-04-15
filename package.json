@@ -1,0 +1,19 @@
+{
+  "name": "learntok",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Scroll to Learn. One Sip at a Time.",
+  "scripts": {
+    "dev": "pnpm --parallel -r run dev",
+    "build": "pnpm -r run build",
+    "lint": "pnpm -r run lint"
+  },
+  "keywords": [
+    "AI",
+    "learning",
+    "microsoft-learn",
+    "azure-openai",
+    "hackathon"
+  ],
+  "license": "MIT"
+}

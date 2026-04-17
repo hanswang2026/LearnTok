@@ -14,15 +14,33 @@ export default function Home() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!topic.trim()) return;
+    const t = topic.trim();
+    const u = sourceUrl.trim();
+    if (!t && !u) return;
     setLoading(true);
     setError("");
     try {
-      const session = await createSession(topic.trim(), sourceUrl.trim() || undefined);
+      // If only URL is provided, extract a topic from the URL path
+      const effectiveTopic = t || extractTopicFromUrl(u);
+      const session = await createSession(effectiveTopic, u || undefined);
       router.push(`/session/${session.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create session");
       setLoading(false);
+    }
+  }
+
+  function extractTopicFromUrl(url: string): string {
+    try {
+      const path = new URL(url).pathname;
+      // MS Learn URLs like /en-us/azure/azure-functions/functions-overview
+      const segments = path.split("/").filter(Boolean);
+      // Remove locale segment (e.g., "en-us")
+      const filtered = segments.filter((s) => !s.match(/^[a-z]{2}-[a-z]{2}$/));
+      // Use the last meaningful segments as the topic
+      return filtered.slice(-2).join(" ").replace(/-/g, " ");
+    } catch {
+      return url;
     }
   }
 
@@ -44,17 +62,16 @@ export default function Home() {
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
             disabled={loading}
-            required
           />
           <input
             className={styles.input}
             type="url"
-            placeholder="Optional: paste an MS Learn URL"
+            placeholder="Or paste an MS Learn URL"
             value={sourceUrl}
             onChange={(e) => setSourceUrl(e.target.value)}
             disabled={loading}
           />
-          <button className={styles.button} type="submit" disabled={loading || !topic.trim()}>
+          <button className={styles.button} type="submit" disabled={loading || (!topic.trim() && !sourceUrl.trim())}>
             {loading ? (
               <span className={styles.spinner}>⏳ Generating sips…</span>
             ) : (

@@ -18,6 +18,7 @@ export default function SessionFeed() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [quizAnswers, setQuizAnswers] = useState<Record<string, string>>({});
   const [hasMore, setHasMore] = useState(true);
+  const [expandedSips, setExpandedSips] = useState<Set<string>>(new Set());
 
   const containerRef = useRef<HTMLDivElement>(null);
   const fetchingMore = useRef(false);
@@ -29,14 +30,16 @@ export default function SessionFeed() {
 
     async function load() {
       try {
-        const [sess, initialSips] = await Promise.all([
+        const [sess, sipsResponse] = await Promise.all([
           getSession(id),
           getSips(id, undefined, 10),
         ]);
         if (cancelled) return;
         setSession(sess);
-        setSips(initialSips);
-        if (initialSips.length < 10) setHasMore(false);
+        setSips(sipsResponse.sips);
+        // Background sips may still be generating — check skeleton size vs sips loaded
+        const totalSkeletonNodes = sess.skeleton?.length ?? 0;
+        setHasMore(sipsResponse.sips.length < totalSkeletonNodes);
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load session");
       } finally {
@@ -55,11 +58,11 @@ export default function SessionFeed() {
     setLoadingMore(true);
     try {
       const lastOrder = sips[sips.length - 1].order;
-      const newSips = await getSips(id, lastOrder, 5);
-      if (newSips.length < 5) setHasMore(false);
+      const response = await getSips(id, lastOrder, 5);
+      if (response.sips.length < 5) setHasMore(false);
       setSips((prev) => {
         const existingIds = new Set(prev.map((s) => s.id));
-        const unique = newSips.filter((s) => !existingIds.has(s.id));
+        const unique = response.sips.filter((s) => !existingIds.has(s.id));
         return [...prev, ...unique];
       });
     } catch {
@@ -91,18 +94,40 @@ export default function SessionFeed() {
   }, [loadMore]);
 
   async function handleReaction(sip: Sip, reaction: string) {
-    try {
-      await interactWithSip(sip.id, id, reaction);
-      setSips((prev) =>
-        prev.map((s) =>
-          s.id === sip.id
-            ? { ...s, userReaction: reaction as Sip["userReaction"] }
-            : s
-        )
-      );
-    } catch {
-      // ignore
+    // 1. Update UI immediately (optimistic)
+    setSips((prev) =>
+      prev.map((s) =>
+        s.id === sip.id
+          ? { ...s, userReaction: reaction as Sip["userReaction"] }
+          : s
+      )
+    );
+
+    // 2. Scroll to next sip immediately
+    const sipIndex = sips.findIndex((s) => s.id === sip.id);
+    if (sipIndex >= 0 && sipIndex < sips.length - 1) {
+      const nextCard = containerRef.current?.children[sipIndex + 1] as HTMLElement;
+      nextCard?.scrollIntoView({ behavior: "smooth" });
+      setCurrentIndex(sipIndex + 1);
     }
+
+    // 3. Fire API call in background (non-blocking)
+    interactWithSip(sip.id, id, reaction)
+      .then(async (result) => {
+        console.log(`[UI] Interact result:`, result);
+        if (result.newSipsAdded > 0 && !expandedSips.has(sip.id)) {
+          setExpandedSips((prev) => new Set(prev).add(sip.id));
+          const response = await getSips(id, undefined, 100);
+          console.log(`[UI] Got ${response.sips.length} total sips, merging new ones`);
+          setSips((prev) => {
+            const existingIds = new Set(prev.map((s) => s.id));
+            const unique = response.sips.filter((s) => !existingIds.has(s.id));
+            return [...prev, ...unique];
+          });
+          setHasMore(true);
+        }
+      })
+      .catch((err) => console.error("[UI] handleReaction error:", err));
   }
 
   function handleQuizSelect(sipId: string, option: string) {

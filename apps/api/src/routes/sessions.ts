@@ -7,6 +7,7 @@ import {
   getSipsBySession,
   createSips,
 } from "../services/cosmos";
+import { ensureSipBuffer } from "../services/buffer";
 
 const router = Router();
 
@@ -14,17 +15,19 @@ const router = Router();
 router.post("/", async (req: Request, res: Response) => {
   try {
     const { topic, sourceUrl } = req.body as {
-      topic: string;
+      topic?: string;
       sourceUrl?: string;
     };
 
-    if (!topic) {
-      res.status(400).json({ error: "topic is required" });
+    if (!topic && !sourceUrl) {
+      res.status(400).json({ error: "topic or sourceUrl is required" });
       return;
     }
 
+    const effectiveTopic = topic || sourceUrl || "";
+
     // 1. Generate the learning skeleton
-    const skeleton = await generateSkeleton(topic, sourceUrl);
+    const skeleton = await generateSkeleton(effectiveTopic, sourceUrl);
 
     // 2. Generate sips for the first 5 skeleton nodes
     const firstNodes = skeleton.slice(0, 5);
@@ -53,7 +56,7 @@ router.post("/", async (req: Request, res: Response) => {
     const session = {
       id: sessionId,
       userId: "hackathon-user",
-      topic,
+      topic: effectiveTopic,
       sourceUrl,
       skeleton,
       sipQueue: skeleton.map((n) => n.id),
@@ -67,12 +70,16 @@ router.post("/", async (req: Request, res: Response) => {
     await createSession(session);
     await createSips(sips);
 
+    // 5. Send response immediately with first 5 sips
     res.status(201).json({
       id: session.id,
       topic: session.topic,
       skeleton,
       sips,
     });
+
+    // 6. Background: fill buffer to 10 unreacted sips
+    ensureSipBuffer(sessionId);
   } catch (error) {
     console.error("Error creating session:", error);
     res.status(500).json({
@@ -119,6 +126,9 @@ router.get("/:id/sips", async (req: Request, res: Response) => {
       hasMore: sips.length === limit,
       currentIndex: session.currentIndex,
     });
+
+    // Background: ensure buffer stays full after serving sips
+    ensureSipBuffer(id);
   } catch (error) {
     console.error("Error getting sips:", error);
     res.status(500).json({

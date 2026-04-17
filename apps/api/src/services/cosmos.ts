@@ -204,13 +204,13 @@ export async function getSipsBySession(
     ];
 
     if (afterOrder !== undefined) {
-      conditions.push("c.order > @afterOrder");
+      conditions.push('c["order"] > @afterOrder');
       parameters.push({ name: "@afterOrder", value: afterOrder });
     }
 
     const query = {
-      query: `SELECT * FROM c WHERE ${conditions.join(" AND ")} ORDER BY c["order"] ASC OFFSET 0 LIMIT @limit`,
-      parameters: [...parameters, { name: "@limit", value: limit }],
+      query: `SELECT TOP ${limit} * FROM c WHERE ${conditions.join(" AND ")} ORDER BY c["order"] ASC`,
+      parameters,
     };
 
     const { resources } = await sipsContainer.items

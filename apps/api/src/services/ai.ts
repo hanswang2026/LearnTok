@@ -1,6 +1,35 @@
 // @azure/openai v2.0.0 is a types-only companion; AzureOpenAI lives in the "openai" package
 import { AzureOpenAI } from "openai";
+import type { ChatCompletionCreateParamsNonStreaming } from "openai/resources/chat/completions";
 import { DefaultAzureCredential, getBearerTokenProvider } from "@azure/identity";
+
+// Logging helpers
+const LOG_PREFIX = "[AI]";
+
+function logRequest(label: string, params: ChatCompletionCreateParamsNonStreaming) {
+  console.log(`\n${LOG_PREFIX} ──── ${label} REQUEST ────`);
+  console.log(`${LOG_PREFIX} Model: ${params.model}`);
+  console.log(`${LOG_PREFIX} Response format: ${JSON.stringify(params.response_format)}`);
+  for (const msg of params.messages) {
+    const content = typeof msg.content === "string"
+      ? msg.content.length > 500 ? msg.content.slice(0, 500) + "... (truncated)" : msg.content
+      : JSON.stringify(msg.content);
+    console.log(`${LOG_PREFIX} [${msg.role}] ${content}`);
+  }
+  console.log(`${LOG_PREFIX} ──── Sending request... ────\n`);
+}
+
+function logResponse(label: string, response: any, startTime: number) {
+  const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+  console.log(`\n${LOG_PREFIX} ──── ${label} RESPONSE (${elapsed}s) ────`);
+  console.log(`${LOG_PREFIX} ID: ${response.id}`);
+  console.log(`${LOG_PREFIX} Model: ${response.model}`);
+  console.log(`${LOG_PREFIX} Usage: prompt=${response.usage?.prompt_tokens} completion=${response.usage?.completion_tokens} total=${response.usage?.total_tokens}`);
+  console.log(`${LOG_PREFIX} Finish reason: ${response.choices?.[0]?.finish_reason}`);
+  const content = response.choices?.[0]?.message?.content ?? "(empty)";
+  console.log(`${LOG_PREFIX} Content:\n${content}`);
+  console.log(`${LOG_PREFIX} ──── End ${label} ────\n`);
+}
 
 // Re-export shared types locally to avoid workspace-link issues
 export interface SkeletonNode {
@@ -59,14 +88,19 @@ export async function generateSkeleton(
   }
   userMessage += ` Return only a JSON object with a "nodes" key containing the array.`;
 
-  const response = await client.chat.completions.create({
+  const params: ChatCompletionCreateParamsNonStreaming = {
     model: deployment,
     messages: [
       { role: "system", content: SKELETON_SYSTEM_PROMPT },
       { role: "user", content: userMessage },
     ],
     response_format: { type: "json_object" },
-  });
+  };
+
+  logRequest("SKELETON", params);
+  const startTime = Date.now();
+  const response = await client.chat.completions.create(params);
+  logResponse("SKELETON", response, startTime);
 
   const raw = response.choices?.[0]?.message?.content;
   if (!raw) {
@@ -106,14 +140,19 @@ ${contextSummary}
 
 Return only a JSON object with keys: title, content, interactionType, interaction, visualHint.`;
 
-  const response = await client.chat.completions.create({
+  const params: ChatCompletionCreateParamsNonStreaming = {
     model: deployment,
     messages: [
       { role: "system", content: SIP_SYSTEM_PROMPT },
       { role: "user", content: userMessage },
     ],
     response_format: { type: "json_object" },
-  });
+  };
+
+  logRequest(`SIP [${node.id}: ${node.title}]`, params);
+  const startTime = Date.now();
+  const response = await client.chat.completions.create(params);
+  logResponse(`SIP [${node.id}: ${node.title}]`, response, startTime);
 
   const raw = response.choices?.[0]?.message?.content;
   if (!raw) {

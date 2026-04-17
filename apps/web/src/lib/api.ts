@@ -32,18 +32,20 @@ export async function getSips(
   sessionId: string,
   after?: number,
   limit = 10
-): Promise<Sip[]> {
+): Promise<{ sips: Sip[]; hasMore: boolean; currentIndex: number }> {
   const params = new URLSearchParams({ limit: String(limit) });
   if (after !== undefined) params.set("after", String(after));
-  return request<Sip[]>(`/api/sessions/${sessionId}/sips?${params}`);
+  return request<{ sips: Sip[]; hasMore: boolean; currentIndex: number }>(
+    `/api/sessions/${sessionId}/sips?${params}`
+  );
 }
 
 export async function interactWithSip(
   sipId: string,
   sessionId: string,
   reaction: string
-): Promise<void> {
-  await request(`/api/sips/${sipId}/interact`, {
+): Promise<{ ok: boolean; queueUpdated: boolean; newSipsAdded: number }> {
+  return request<{ ok: boolean; queueUpdated: boolean; newSipsAdded: number }>(`/api/sips/${sipId}/interact`, {
     method: "POST",
     body: JSON.stringify({ reaction, sessionId }),
   });
